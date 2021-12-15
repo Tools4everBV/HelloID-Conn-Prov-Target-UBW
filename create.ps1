@@ -9,7 +9,7 @@ $VerbosePreference = "Continue"
 $config = $configuration | ConvertFrom-Json
 $p = $person | ConvertFrom-Json
 $success = $false
-$auditLogs = New-Object Collections.Generic.List[PSCustomObject]
+$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
 
 # Account mapping
 # Tables are ordered because UBW doesn't accept the jsonPayload if the order is different

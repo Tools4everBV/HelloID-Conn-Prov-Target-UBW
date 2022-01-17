@@ -1,6 +1,14 @@
 # HelloID-Conn-Prov-Target-UBW
 
-> This connector is not tested with a HelloID environment. Changes might to have to be made to the code according to your environment.
+| :information_source: Information |
+|:---------------------------|
+| This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.       |
+
+| :warning: Warning |
+|:---------------------------|
+| Note that this connector is not yet implemented nor tested on a HelloID environment. Contact our support for further assistance       |
+
+<br />
 
 <p align="center">
   <img src="https://www.unit4.com/sites/default/files/images/logo.svg">

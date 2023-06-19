@@ -9,9 +9,8 @@
 | Note that this connector is not yet implemented nor tested on a HelloID environment. Contact our support for further assistance       |
 
 <br />
-
 <p align="center">
-  <img src="https://www.unit4.com/sites/default/files/images/logo.svg">
+  <img src="https://www.tools4ever.nl/connector-logos/unit4-logo.png" width="500">
 </p>
 
 ## Table of contents

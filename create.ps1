@@ -173,7 +173,7 @@ try {
                     Uri         = "$($actionContext.Configuration.BaseUrl)/users"
                     Method      = 'POST'                    
                     Body        = $body
-                    ContentType = 'application/json'
+                    ContentType = 'application/json; charset=utf-8'
                 }
 
                 $createdAccount = Invoke-RestMethod @splatCreateParams

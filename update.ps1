@@ -221,7 +221,7 @@ try {
                     Uri         = "$($actionContext.Configuration.BaseUrl)/users/$($actionContext.References.Account.UserId)"
                     Method      = 'PATCH'                    
                     Body        = $body
-                    ContentType = 'application/json-patch+json'                    
+                    ContentType = 'application/json-patch+json; charset=utf-8'                    
                 }        
                 $updatedAccount = Invoke-RestMethod @splatRestParams                
 

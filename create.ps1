@@ -1,94 +1,105 @@
-#####################################################
+#################################################
 # HelloID-Conn-Prov-Target-UBW-Create
-#
-# Version: 1.0.0
-#####################################################
-$VerbosePreference = "Continue"
-
-# Initialize default value's
-$config = $configuration | ConvertFrom-Json
-$p = $person | ConvertFrom-Json
-$success = $false
-$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
+# PowerShell V2
+#################################################
+# Enable TLS1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
 # Account mapping
 # Tables are ordered because UBW doesn't accept the jsonPayload if the order is different
-$account = [ordered]@{
-    alertMedia          = ''
-    defaultLogonCompany = ''
-    description         = ''
-    languageCode        = ''
-    printer             = ''
-    userId              = ''
-    userName            = ''
-
-    security = [ordered]@{
-        domainUser         = ''
+$ubwAccount = [ordered]@{
+    alertMedia          = $actionContext.Data.alertMedia
+    defaultLogonCompany = $actionContext.Data.defaultLogonCompany
+    description         = $actionContext.Data.description
+    languageCode        = $actionContext.Data.languageCode
+    printer             = $actionContext.Data.printer
+    userId              = $actionContext.Data.userId
+    userName            = $actionContext.Data.userName    
+    security            = [ordered]@{
+        domainUser         = $actionContext.Data.security.domainUser
         unit4Id            = ''
-        disabledUntil      = ''
+        disabledUntil      = $actionContext.Data.security.disabledUntil
         passwordUpdated    = ''
-        passwordExpiryDate = ''
-
+        passwordExpiryDate = "2099-12-31T00:00:00.000Z"
     }
-
     # userStatus
-    userStatus = [ordered]@{
-        dateFrom = ''
-        dateTo   = ''
-        status   = ''
-    }
-
+    userStatus          = [ordered]@{        
+        dateFrom = $actionContext.Data.userStatus.dateFrom
+        dateTo   = $actionContext.Data.userStatus.dateTo
+        status   = $actionContext.Data.userStatus.status
+    }    
     # roleAndCompany
-    roleAndCompany = @([ordered]@{
-        companyId               = ''
-        personId                = ''
-        roleConnectionValidFrom = ''
-        roleConnectionValidTo   = ''
-        roleConnectionStatus    = ''
-        roleId                  = ''
-    })
-
+    roleAndCompany      = @(
+        foreach ($role in $actionContext.Configuration.DefaultRoles.Split(',').Trim()) {
+            [ordered]@{            
+                companyId               = $actionContext.Data.roleAndCompany.companyId
+                personId                = $($actionContext.Data.personId)
+                roleConnectionValidFrom = $actionContext.Data.roleAndCompany.roleConnectionValidFrom
+                roleConnectionValidTo   = "2099-12-31T00:00:00.000Z"
+                roleConnectionStatus    = 'N'
+                roleId                  = $role
+            }
+        }
+    )
+    # usage
+    usage               = [ordered]@{ 
+        isAdministrator             = $actionContext.Data.usage.isAdministrator
+        availableInMenuAccess       = $actionContext.Data.usage.availableInMenuAccess
+        isEnabledForWorkflowProcess = $actionContext.Data.usage.isEnabledForWorkflowProcess    
+    }
     # contactPoints
-    contactPoints = @([ordered]@{
+    contactPoints       = @([ordered]@{                        
             additionalContactInfo = [ordered]@{
-            contactPerson   = ''
-            contactPosition = ''
-            eMail           = ''
-            eMailCc         = ''
-            gtin            = ''
-            url             = ''
-        }
-        address = [ordered]@{
-            countryCode   = ''
-            place         = ''
-            postcode      = ''
-            province      = ''
-            streetAddress = ''
-        }
-    })
+                contactPerson   = ''
+                contactPosition = ''
+                eMail           = $actionContext.Data.additionalContactInfo.email
+                eMailCc         = ''
+                gtin            = ''
+                url             = ''
+            }
+            address               = [ordered]@{
+                countryCode   = 'NL'
+                place         = ''
+                postcode      = ''
+                province      = ''
+                streetAddress = ''
+            }
+        })
 }
 
 #region functions
-function Resolve-HTTPError {
+function Resolve-UBWError {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
+        [Parameter(Mandatory)]
+        [object]
+        $ErrorObject
     )
     process {
         $httpErrorObj = [PSCustomObject]@{
-            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
-            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
-            RequestUri            = $ErrorObject.TargetObject.RequestUri
-            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
-            ErrorMessage          = ''
+            ScriptLineNumber = $ErrorObject.InvocationInfo.ScriptLineNumber
+            Line             = $ErrorObject.InvocationInfo.Line
+            ErrorDetails     = $ErrorObject.Exception.Message
+            FriendlyMessage  = $ErrorObject.Exception.Message
         }
-        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
-            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-            $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+        if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
+            $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            if ($null -ne $ErrorObject.Exception.Response) {
+                $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+                if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
+                    $httpErrorObj.ErrorDetails = $streamReaderResponse
+                }
+            }
+        }
+        try {
+            $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
+            $friendlyMessage = ($errorDetailsObject.notificationMessages | ConvertTo-Json)
+            $httpErrorObj.FriendlyMessage = $friendlyMessage
+        }
+        catch {
+            $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
         Write-Output $httpErrorObj
     }
@@ -96,95 +107,135 @@ function Resolve-HTTPError {
 #endregion
 
 try {
-    # Verify if a user must be created or correlated
-    Write-Verbose 'Adding authorization headers'
-    $authorization = "$($config.UserName):$($config.Password)"
-    $base64Credentials = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($authorization))
-    $splatRestParams = @{
-        Headers = @{
-            Authorization = "Basic $base64Credentials"
+    # Initial Assignments
+    $outputContext.AccountReference = 'Currently not available'
+
+    # Validate correlation configuration    
+    if ($actionContext.CorrelationConfiguration.Enabled) {
+        $correlationField = $actionContext.CorrelationConfiguration.AccountField
+        $correlationValue = $actionContext.CorrelationConfiguration.PersonFieldValue
+
+        if ([string]::IsNullOrEmpty($($correlationField))) {
+            throw 'Correlation is enabled but not configured correctly'
         }
+        if ([string]::IsNullOrEmpty($($correlationValue))) {
+            throw 'Correlation is enabled but [accountFieldValue] is empty. Please make sure it is correctly mapped'
+        }
+
+        Write-Information 'Creating authentication headers'
+        $headers = [System.Collections.Generic.Dictionary[string, string]]::new()
+        $headers.Add("Authorization", "Basic $([System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("$($actionContext.Configuration.UserName):$($actionContext.Configuration.Password)")))")
+    
+        # An employee is connected to a user account.
+        # Lookup employee. If no employee could be found, an exception will be thrown -> we cannot create a user account.
+        $splatEmployeeRestParams = @{
+            Headers = $headers
+            Uri     = "$($actionContext.Configuration.BaseUrl)/employees/$($actionContext.Data.personId)"            
+            Method  = 'GET'
+        }
+        $responseEmployee = Invoke-RestMethod @splatEmployeeRestParams
+
+        # Retrieve all users
+        $splatAllUsersRestParams = @{
+            Headers = $headers
+            Uri     = "$($actionContext.Configuration.BaseUrl)/objects/users"
+            Method  = 'GET'
+        }   
+        $allUsers = Invoke-RestMethod @splatAllUsersRestParams
+
+        # Lookup the [account.roleAndCompany.personId]
+        $correlatedAccount = $allUsers.Where{ $_.rolesAndCompanies.personId -eq "$($actionContext.Data.personId)" }                
     }
-
-    # An employee is connected to a user account.
-    # Lookup employee. If no employee could be found, an exception will be thrown -> we cannot create a user account.
-    $splatRestParams['Uri'] = "$($config.BaseUrl)/web-api/v1/employees/$($account.roleAndCompany.personId)"
-    $splatRestParams['Method'] = 'GET'
-    $responseEmployee = Invoke-RestMethod @splatRestParams
-
-    # Retrieve all users
-    $splatRestParams['Uri'] = "$($config.BaseUrl)/web-api/v1/objects/users"
-    $splatRestParams['Method'] = 'GET'
-    $allUsers = Invoke-RestMethod @splatRestParams
-
-    # Lookup the [account.roleAndCompany.personId]
-    $userAccount = $allUsers.Where{$_.rolesAndCompanies.personId -eq "$($account.roleAndCompany.personId)"}
 
     # If the personId on the user account matches with the employee personId -> Correlate
-    if (($userAccount) -eq ($responseEmployee.personId)){
-        Write-Verbose "User account for: [$($p.DisplayName)] found with personId: [$($responseEmployee.personId)], switching to 'correlate'"
-        $action = 'Correlate'
-    } elseif (-Not($userAccount)) {
+    Write-Information 'Determine if a user needs to be created or correlated'
+    
+    #if (($correlatedAccount.rolesAndCompanies.personId) -eq ($responseEmployee.personId)) {            
+    if (($correlatedAccount | Measure-Object).count -gt 0) {            
+        $action = 'CorrelateAccount'
+    }
+    else {
         # if no user account could be found (i.o. if the $userAccount variable is empty) -> Create
-        Write-Verbose "No user account for: [$($p.DisplayName)] found, switching to 'create'"
-        $action = 'Create'
+        $action = 'CreateAccount'
     }
 
-    # Add an auditMessage showing what will happen during enforcement
-    if ($dryRun -eq $true){
-        $auditMessage = "$action UBW account for: [$($p.DisplayName)], will be executed during enforcement"
-    }
+    # Process
+    switch ($action) {
+        'CreateAccount' {
+            # Make sure to test with special characters and if needed; add utf8 encoding.
+            if (-not($actionContext.DryRun -eq $true)) {
 
-    if (-not($dryRun -eq $true)){
-        switch ($action) {
-            'Create' {
-                Write-Verbose "Creating UBW account for: [$($p.DisplayName)]"
-                $body = $account | ConvertTo-Json -Depth 10
+                Write-Information "Creating and correlating UBW account for [$($personContext.Person.DisplayName)]"
+                
+                $body = ConvertTo-Json $ubwAccount -Depth 10
+                $splatCreateParams = @{
+                    Headers     = $headers
+                    Uri         = "$($actionContext.Configuration.BaseUrl)/users"
+                    Method      = 'POST'                    
+                    Body        = $body
+                    ContentType = 'application/json'
+                }
 
-                $splatRestParams['Uri'] = "$($config.BaseUrl)/web-api/v1/users"
-                $splatRestParams['Body'] = $body
-                $splatRestParams['Method'] = 'POST'
-                $splatRestParams['ContentType'] = 'application/json'
-                $responseCreateUser = Invoke-RestMethod @splatRestParams
-                $accountReference = $responseCreateUser.userId
-                break
+                $createdAccount = Invoke-RestMethod @splatCreateParams
+                
+                $outputContext.AccountReference = @{
+                    "UserId"   = $createdAccount.userId
+                    "PersonId" = $actionContext.Data.personId
+                }
+                
             }
-
-            'Correlate'{
-                Write-Verbose "Correlating UBW account for: [$($p.DisplayName)]"
-                $accountReference = $($userAccount.userId)
-                break
+            else {
+                Write-Information "[DryRun] $action UBW account for: [$($personContext.Person.DisplayName)], will be executed during enforcement"                
             }
+            $auditLogMessage = "Create account was successful. AccountReference is: [$($outputContext.AccountReference.UserId)]"
+            break
         }
 
-        $success = $true
-        $auditLogs.Add([PSCustomObject]@{
-            Message = "$action account for: [$($p.DisplayName)] was successful. AccountReference is: [$accountReference]"
+        'CorrelateAccount' {
+            Write-Information "Correlating UBW account [$($personContext.Person.DisplayName)]"   
+            
+            if (($correlatedAccount | Measure-Object).count -gt 1) {
+                $correlatedAccount = $correlatedAccount | Where-Object { $_.userId -eq $actionContext.Data.userId }
+            }
+            $outputContext.AccountReference = @{
+                "UserId"   = $correlatedAccount.userId
+                "PersonId" = $actionContext.Data.personId
+            }
+            $outputContext.Data.userId = $correlatedAccount.userId
+            $outputContext.AccountCorrelated = $true
+            $auditLogMessage = "Correlated account: [$($outputContext.AccountReference.UserId)] on field: [$($correlationField)] with value: [$($correlationValue)]"
+            break
+        }
+    }
+
+    $outputContext.success = $true
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Action  = $action
+            Message = $auditLogMessage
             IsError = $false
         })
-    }
-} catch {
-    $success = $false
+}
+catch {
+    $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
-    $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObj = Resolve-HTTPError -ErrorObject $ex
-        $errorMessage = "Could not $action UBW account for: [$($p.DisplayName)]. Error: [$($errorObj.ErrorMessage)]"
-    } else {
-        $errorMessage = "Could not $action UBW account for: [$($p.DisplayName)]. Error: [$($ex.Exception.Message)]"
+        $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObj = Resolve-UBWError -ErrorObject $ex        
+        if ($null -ne $errorObj.FriendlyMessage) {
+            $message = $errorObj.FriendlyMessage
+        }
+        else {
+            $message = $errorObj.ErrorDetails
+        }
+        $auditMessage = "Could not create or correlate UBW account. Error: $message"        
+        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $message"
     }
-    Write-Verbose $errorMessage
-    $auditLogs.Add([PSCustomObject]@{
-        Message = $errorMessage
-        IsError = $true
-    })
-} finally {
-   $result = [PSCustomObject]@{
-        Success          = $success
-        AccountReference = $accountReference
-        Auditlogs        = $auditLogs
-        AuditDetails     = $auditMessage
-        Account          = $account
+    else {
+        $auditMessage = "Could not create or correlate UBW account. Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-    Write-Output $result | ConvertTo-Json -Depth 10
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Message = $auditMessage
+            IsError = $true
+        })
 }

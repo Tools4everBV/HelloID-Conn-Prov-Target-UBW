@@ -1,5 +1,5 @@
 #################################################
-# HelloID-Conn-Prov-Target-UBW-Delete
+# HelloID-Conn-Prov-Target-UBW--RevokePermission
 # PowerShell V2
 #################################################
 
@@ -63,10 +63,10 @@ try {
         Uri     = "$($actionContext.Configuration.BaseUrl)/users/$($actionContext.References.Account.UserId)"
         Method  = 'GET'
     }   
-    $correlatedAccount = Invoke-RestMethod @splatAllUsersRestParams
+    $correlatedAccount = Invoke-RestMethod @splatAllUsersRestParams   
 
     if ($null -ne $correlatedAccount) {
-        $action = 'DeleteAccount'
+        $action = 'RevokePermission'
     }
     else {
         $action = 'NotFound'
@@ -74,43 +74,42 @@ try {
 
     # Process
     switch ($action) {
-        'DeleteAccount' {
+        'RevokePermission' {
             if (-not($actionContext.DryRun -eq $true)) {
-                Write-Information "Deleting UBW account with accountReference: [$($actionContext.References.Account.UserId)]"
+                Write-Information "Revoking UBW permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)]"
                 
                 [System.Collections.Generic.List[object]]$body = @()
-                
-                foreach ($property in $actionContext.Data.PSObject.Properties) {
-                    foreach ($prop in $property.value.PSObject.Properties) {                        
-                        $body.Add(
-                            [PSCustomObject]@{
-                                op    = 'Replace'
-                                path  = "$($property.name)"
-                                value = @{
-                                    $prop.Name = $prop.Value
-                                }
-                            }
-                        )
+
+                $body.Add(
+                    [PSCustomObject]@{
+                        op    = 'RemoveById'
+                        path  = "roleAndCompany"
+                        value = [ordered]@{
+                            companyId = "WR"
+                            roleId    = "$($actionContext.References.Permission.Id)"                            
+                        }
                     }
-                }
-                
+                )
+
                 $body = ConvertTo-Json $body -Depth 10
 
                 $splatRestParams = @{
-                    Headers = $headers
-                    Uri     = "$($actionContext.Configuration.BaseUrl)/users/$($actionContext.References.Account.UserId)"
-                    Method  = 'DELETE'                    
+                    Headers     = $headers
+                    Uri         = "$($actionContext.Configuration.BaseUrl)/users/$($actionContext.References.Account.UserId)"
+                    Method      = 'PATCH'
+                    Body        = $body
+                    ContentType = 'application/json-patch+json'
                 }        
                 $response = Invoke-RestMethod @splatRestParams
             }
 
-            else { 
-                Write-Information "[DryRun] Delete UBW account with accountReference: [$($actionContext.References.Account.UserId)], will be executed during enforcement"
+            else {                
+                Write-Information "[DryRun] Revoke UBW permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true
-            $outputContext.AuditLogs.Add([PSCustomObject]@{                    
-                    Message = "Successfully deleted UBW account for: $($personContext.Person.DisplayName) with userId: $($actionContext.References.Account.UserId)"
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = "Revoke permission [$($actionContext.PermissionDisplayName)] was successful"
                     IsError = $false
                 })
             break
@@ -140,11 +139,11 @@ catch {
         else {
             $message = $errorObj.ErrorDetails
         }
-        $auditMessage = "Could not delete UBW account. Error: $message"        
+        $auditMessage = "Could not revoke UBW permission. Error: $message"        
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $message"
     }
     else {
-        $auditMessage = "Could not delete UBW account. Error: $($_.Exception.Message)"
+        $auditMessage = "Could not revoke UBW permission. Error: $($_.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     $outputContext.AuditLogs.Add([PSCustomObject]@{

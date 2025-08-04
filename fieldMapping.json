@@ -1,0 +1,216 @@
+{
+  "Version": "v1",
+  "MappingFields": [
+    {
+      "Name": "userName",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create", "Update"],
+          "MappingMode": "Complex",
+          "Value": "\"function getValue() {\\r\\n    let userName = Person.Accounts._aa7027a644764f7fb3b71a499cc5010f.sAMAccountName\\r\\n    return userName;\\r\\n}\\r\\ngetValue();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "userStatus.dateFrom",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create"],
+          "MappingMode": "Complex",
+          "Value": "\"function getValue() {\\n    let dateFrom = new Date(Person.PrimaryContract.Custom.TopdeksHiredate).toISOString()\\n    return dateFrom;\\n}\\ngetValue();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "userStatus.dateTo",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Disable", "Delete"],
+          "MappingMode": "Complex",
+          "Value": "\"function getValue() {\\r\\n    let date = new Date();\\r\\n    date.setDate(date.getDate());\\r\\n    return date.toISOString()\\r\\n}\\r\\ngetValue();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        },
+        {
+          "MapForActions": ["Create", "Enable"],
+          "MappingMode": "Complex",
+          "Value": "\"function getValue() {\\r\\n    let date = new Date(\\\"2099-12-31\\\");\\r\\n    date.setDate(date.getDate());\\r\\n    return date.toISOString()\\r\\n}\\r\\ngetValue();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "alertMedia",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create"],
+          "MappingMode": "Fixed",
+          "Value": "\"M\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "languageCode",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create"],
+          "MappingMode": "Fixed",
+          "Value": "\"NL\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "printer",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create"],
+          "MappingMode": "Fixed",
+          "Value": "\"DEFAULT\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "userStatus.status",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create", "Enable"],
+          "MappingMode": "Fixed",
+          "Value": "\"N\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        },
+        {
+          "MapForActions": ["Disable"],
+          "MappingMode": "Fixed",
+          "Value": "\"T\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "security.domainUser",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create", "Update"],
+          "MappingMode": "Complex",
+          "Value": "\"function getValue() {\\n    let domainUser = \\\"WSRL\\\\\\\\\\\" + Person.Accounts.MicrosoftActiveDirectory.sAMAccountName\\n    return domainUser\\n}\\n\\ngetValue();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "userId",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create"],
+          "MappingMode": "Complex",
+          "Value": "\"function getValue() {\\n    let userId = Person.Accounts.MicrosoftActiveDirectory.sAMAccountName\\n    return userId;\\n}\\ngetValue();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "additionalContactInfo.email",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create", "Update"],
+          "MappingMode": "Complex",
+          "Value": "\"function getValue() {\\n    let email = Person.Accounts.MicrosoftActiveDirectory.mail\\n    return email;\\n}\\n\\ngetValue();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "description",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create", "Update"],
+          "MappingMode": "Complex",
+          "Value": "\"function getValue() {\\n    let description = Person.Accounts.MicrosoftActiveDirectory.displayName\\n    return description;\\n}\\n\\ngetValue();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "roleAndCompany.companyId",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create"],
+          "MappingMode": "Fixed",
+          "Value": "\"WR\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "defaultLogonCompany",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create", "Update"],
+          "MappingMode": "Fixed",
+          "Value": "\"WR\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "personId",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": ["Create"],
+          "MappingMode": "Field",
+          "Value": "\"Person.ExternalId\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    }
+  ],
+  "UniqueFieldNames": []
+}

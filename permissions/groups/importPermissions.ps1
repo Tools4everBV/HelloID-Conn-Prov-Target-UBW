@@ -104,7 +104,7 @@ try {
                 @{
                     AccountReferences   = $references
                     PermissionReference = @{
-                        Reference = $key.roleId
+                        Id = $key.roleId
                     }                   
                     DisplayName         = $key.roleId
                     Description         = $key.roleId                     

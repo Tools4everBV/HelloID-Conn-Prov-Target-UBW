@@ -62,7 +62,7 @@ try {
     
     $allRoles = Invoke-RestMethod @splatAllRolesRestParams 
     $defaultRoles = $actionContext.Configuration.DefaultRoles.Split(',').Trim()
-    $allRoles = $allRoles | Where-Object { $_.status -eq "N" -and $_.roleId -notin ($defaultRoles) } 
+    $allRoles = $allRoles | Where-Object { $_.status -eq "N" -and $_.roleId -notin ($defaultRoles) -and $_.roleDetailInformations.companyId -eq $actionContext.Configuration.CompanyId } 
 
     foreach ($permission in $allRoles) {        
         $outputContext.Permissions.Add(

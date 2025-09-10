@@ -46,6 +46,14 @@ function Resolve-UBWError {
 #endregion
 
 try {
+    if ($actionContext.Origin -eq 'reconciliation') {
+        $dateTo = Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ"
+        $data = [pscustomobject]@{ 
+            userStatus = @{ dateTo = $dateTo }
+        }
+        $actionContext | Add-Member -MemberType NoteProperty -Name 'data' -Value $data -Force
+    }
+
     # Verify if [aRef] has a value
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
         throw 'The account reference could not be found'

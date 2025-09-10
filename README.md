@@ -37,12 +37,13 @@ _HelloID-Conn-Prov-Target-UBW_ is a _target_ connector. _UBW_ provides a set of 
 
 The following settings are required to connect to the API.
 
-| Setting      | Description                        | Mandatory |
-| ------------ | ---------------------------------- | --------- |
-| UserName     | The UserName to connect to the API | Yes       |
-| Password     | The Password to connect to the API | Yes       |
-| BaseUrl      | The URL to the API                 | Yes       |
-| DefaultRoles | Default roleId for every account   | Yes       |
+| Setting      | Description                             | Mandatory |
+| ------------ | --------------------------------------- | --------- |
+| UserName     | The UserName to connect to the API      | Yes       |
+| Password     | The Password to connect to the API      | Yes       |
+| BaseUrl      | The URL to the API                      | Yes       |
+| DefaultRoles | Default roleId for every account        | Yes       |
+| CompanyId    | Company Id for mananging relevant roles | Yes       |
 
 ### Correlation configuration
 
@@ -54,7 +55,8 @@ The correlation configuration is used to specify which properties will be used t
 | Person correlation field  | `PersonContext.Person.ExternalId` |
 | Account correlation field | `PersonId`                        |
 
-> [!TIP] > _For more information on correlation, please refer to our correlation [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems/correlation.html) pages_.
+> [!TIP]
+> _For more information on correlation, please refer to our correlation [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems/correlation.html) pages_.
 
 > [!IMPORTANT]
 > If the Person correlation field value is not corresponding to any field in the UBW target accounts, it may be necessary to add a custom field on the person to correctly implement reconciliation.

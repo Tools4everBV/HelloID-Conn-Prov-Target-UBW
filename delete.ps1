@@ -1,38 +1,44 @@
-#####################################################
+#################################################
 # HelloID-Conn-Prov-Target-UBW-Delete
-#
-# Version: 1.0.0
-#####################################################
-$VerbosePreference = "Continue"
+# PowerShell V2
+#################################################
 
-# Initialize default value's
-$config = $configuration | ConvertFrom-Json
-$p = $person | ConvertFrom-Json
-$aRef = $AccountReference | ConvertFrom-Json
-$success = $false
-$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
+# Enable TLS1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
 #region functions
-function Resolve-HTTPError {
+function Resolve-UBWError {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
+        [Parameter(Mandatory)]
+        [object]
+        $ErrorObject
     )
     process {
         $httpErrorObj = [PSCustomObject]@{
-            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
-            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
-            RequestUri            = $ErrorObject.TargetObject.RequestUri
-            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
-            ErrorMessage          = ''
+            ScriptLineNumber = $ErrorObject.InvocationInfo.ScriptLineNumber
+            Line             = $ErrorObject.InvocationInfo.Line
+            ErrorDetails     = $ErrorObject.Exception.Message
+            FriendlyMessage  = $ErrorObject.Exception.Message
         }
-        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
-            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-            $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+        if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
+            $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            if ($null -ne $ErrorObject.Exception.Response) {
+                $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+                if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
+                    $httpErrorObj.ErrorDetails = $streamReaderResponse
+                }
+            }
+        }
+        try {
+            $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
+            $friendlyMessage = ($errorDetailsObject.notificationMessages | ConvertTo-Json)
+            $httpErrorObj.FriendlyMessage = $friendlyMessage
+        }
+        catch {
+            $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
         Write-Output $httpErrorObj
     }
@@ -40,60 +46,117 @@ function Resolve-HTTPError {
 #endregion
 
 try {
-    # Add an auditMessage showing what will happen during enforcement
-    if ($dryRun -eq $true){
-        $auditMessage = "Delete UBW account for: [$($p.DisplayName)], will be executed during enforcement"
+    if ($actionContext.Origin -eq 'reconciliation') {
+        $dateTo = Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ"
+        $data = [pscustomobject]@{ 
+            userStatus = @{ dateTo = $dateTo }
+        }
+        $actionContext | Add-Member -MemberType NoteProperty -Name 'data' -Value $data -Force
+    }
+    
+    # Verify if [aRef] has a value
+    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
+        throw 'The account reference could not be found'
     }
 
-     if (-not($dryRun -eq $true)) {
-        Write-Verbose "Deleting UBW account: $($aRef) from: $($p.DisplayName)"
-        Write-Verbose 'Adding authorization headers'
-        $authorization = "$($config.UserName):$($config.Password)"
-        $base64Credentials = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($authorization))
-        $headers = @{
-            Authorization = "Basic $base64Credentials"
+    Write-Information 'Creating authentication headers'
+    $headers = [System.Collections.Generic.Dictionary[string, string]]::new()
+    $headers.Add("Authorization", "Basic $([System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("$($actionContext.Configuration.UserName):$($actionContext.Configuration.Password)")))")
+    
+    Write-Information 'Verifying if a UBW account exists'
+
+    # Retrieve user
+    $splatAllUsersRestParams = @{
+        Headers = $headers
+        Uri     = "$($actionContext.Configuration.BaseUrl)/users/$($actionContext.References.Account.UserId)"
+        Method  = 'GET'
+    }   
+    $correlatedAccount = Invoke-RestMethod @splatAllUsersRestParams
+
+    if ($null -ne $correlatedAccount) {
+        $action = 'DeleteAccount'
+    }
+    else {
+        $action = 'NotFound'
+    }
+
+    # Process
+    switch ($action) {
+        'DeleteAccount' {
+            if (-not($actionContext.DryRun -eq $true)) {
+                Write-Information "Deleting UBW account with accountReference: [$($actionContext.References.Account.UserId)]"
+                
+                [System.Collections.Generic.List[object]]$body = @()
+                
+                foreach ($property in $actionContext.Data.PSObject.Properties) {
+                    foreach ($prop in $property.value.PSObject.Properties) {                        
+                        $body.Add(
+                            [PSCustomObject]@{
+                                op    = 'Replace'
+                                path  = "$($property.name)"
+                                value = @{
+                                    $prop.Name = $prop.Value
+                                }
+                            }
+                        )
+                    }
+                }
+                
+                $body = ConvertTo-Json $body -Depth 10
+
+                $splatRestParams = @{
+                    Headers = $headers
+                    Uri     = "$($actionContext.Configuration.BaseUrl)/users/$($actionContext.References.Account.UserId)"
+                    Method  = 'DELETE'                    
+                }        
+                $response = Invoke-RestMethod @splatRestParams
+            }
+
+            else { 
+                Write-Information "[DryRun] Delete UBW account with accountReference: [$($actionContext.References.Account.UserId)], will be executed during enforcement"
+            }
+
+            $outputContext.Success = $true
+            $outputContext.AuditLogs.Add([PSCustomObject]@{                    
+                    Message = "Successfully deleted UBW account for: $($personContext.Person.DisplayName) with userId: $($actionContext.References.Account.UserId)"
+                    IsError = $false
+                })
+            break
         }
 
-        $splatParams['Uri'] = "$($config.BaseUrl)/web-api/v1/users/$aRef"
-        $splatParams['Method'] = 'GET'
-        $splatParams['Headers'] = $headers
-        $null = Invoke-RestMethod @splatRestParams
-        $splatWebRequestParams = @{
-            Uri     = "$($config.BaseUrl)/web-api/v1/users/$aRef)"
-            Method  = 'DELETE'
-            Headers = $headers
-        }
-        $responseDeleteUser = Invoke-WebRequest @splatWebRequestParams
-        if ($responseDeleteUser.StatusCode -eq 200){
-            $message = "successfully deleted UBW account for: $($p.DisplayName) with userId: $($aRef)"
-            Write-Verbose $message
-            $success = $true
-            $auditLogs.Add([PSCustomObject]@{
-                Message = $message
-                IsError = $true
-            })
+        'NotFound' {
+            Write-Information "UBW account: [$($actionContext.References.Account.UserId)] could not be found, possibly indicating that it could be deleted"
+            $outputContext.Success = $false
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = "UBW account: [$($actionContext.References.Account.UserId)] could not be found, possibly indicating that it could be deleted"
+                    IsError = $true
+                })
+            break
         }
     }
-} catch {
-    $success = $false
+
+}
+catch {
+    $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
-    $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObj = Resolve-HTTPError -ErrorObject $ex
-        $errorMessage = "Could not delete UBW account for: $($p.DisplayName). Error: $($errorObj.ErrorMessage)"
-    } else {
-        $errorMessage = "Could not delete UBW account for: $($p.DisplayName). Error: $($ex.Exception.Message)"
+        $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObj = Resolve-UBWError -ErrorObject $ex
+        if ($null -ne $errorObj.FriendlyMessage) {
+            $message = $errorObj.FriendlyMessage
+        }
+        else {
+            $message = $errorObj.ErrorDetails
+        }
+        $auditMessage = "Could not delete UBW account. Error: $message"        
+        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $message"
     }
-    Write-Verbose $errorMessage
-    $auditLogs.Add([PSCustomObject]@{
-        Message = $errorMessage
-        IsError = $true
-    })
-} finally {
-    $result = [PSCustomObject]@{
-        Success      = $success
-        AuditDetails = $auditMessage
-        Auditlogs    = $auditLogs
+    else {
+        $auditMessage = "Could not delete UBW account. Error: $($_.Exception.Message)"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-    Write-Output $result | ConvertTo-Json -Depth 10
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Message = $auditMessage
+            IsError = $true
+        })
 }

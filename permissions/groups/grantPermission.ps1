@@ -1,7 +1,8 @@
 #################################################
-# HelloID-Conn-Prov-Target-UBW-Enable
+# HelloID-Conn-Prov-Target-UBW-GrantPermission
 # PowerShell V2
 #################################################
+#Write-Information $actionContext.References.Account
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -63,36 +64,43 @@ try {
         Uri     = "$($actionContext.Configuration.BaseUrl)/users/$($actionContext.References.Account.UserId)"
         Method  = 'GET'
     }   
-    $correlatedAccount = Invoke-RestMethod @splatAllUsersRestParams
+    $correlatedAccount = Invoke-RestMethod @splatAllUsersRestParams 
 
     if ($null -ne $correlatedAccount) {
-        $action = 'EnableAccount'
+        $action = 'GrantPermission'
     }
     else {
         $action = 'NotFound'
     }
-
+    
     # Process
     switch ($action) {
-        'EnableAccount' {
+        'GrantPermission' {
             if (-not($actionContext.DryRun -eq $true)) {
-                Write-Information "Enabling UBW account with accountReference: [$($actionContext.References.Account.UserId)]"
+                Write-Information "Granting UBW permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)]"
+                
+                $validFromDate = Get-Date 
+                $y = $validFromDate.year
+                $m = $validFromDate.month
+                $d = $validFromDate.day
+
                 [System.Collections.Generic.List[object]]$body = @()
-                
-                foreach ($property in $actionContext.Data.PSObject.Properties) {
-                    foreach ($prop in $property.value.PSObject.Properties) {                        
-                        $body.Add(
-                            [PSCustomObject]@{
-                                op    = 'Replace'
-                                path  = "$($property.name)"
-                                value = @{
-                                    $prop.Name = $prop.Value
-                                }
-                            }
-                        )
+
+                $body.Add(
+                    [PSCustomObject]@{
+                        op    = 'AddOrReplaceById'
+                        path  = "roleAndCompany"
+                        value = [ordered]@{
+                            companyId               = "$($actionContext.Configuration.CompanyId)"
+                            personId                = "$($actionContext.References.Account.PersonId)"                            
+                            roleConnectionValidFrom = "$($y)-$($m)-$($d)T00:00:00.000Z"
+                            roleConnectionValidTo   = "2099-12-31T00:00:00.000Z"
+                            roleId                  = "$($actionContext.References.Permission.Id)"
+                        }
                     }
-                }
-                
+                )
+
+
                 $body = ConvertTo-Json $body -Depth 10
 
                 $splatRestParams = @{
@@ -101,27 +109,28 @@ try {
                     Method      = 'PATCH'
                     Body        = $body
                     ContentType = 'application/json-patch+json'
-                }                        
-                $response = Invoke-RestMethod @splatRestParams                
+                }        
+                
+                $response = Invoke-RestMethod @splatRestParams
             }
 
             else {                
-                Write-Information "[DryRun] Enable UBW account with accountReference: [$($actionContext.References.Account.UserId)], will be executed during enforcement"
+                Write-Information "[DryRun] Grant UBW permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = 'Enable account was successful'
+                    Message = "Grant permission [$($actionContext.PermissionDisplayName)] was successful"
                     IsError = $false
                 })
             break
         }
 
         'NotFound' {
-            Write-Information "UBW account: [$($actionContext.References.Account.UserId)] could not be found, possibly indicating that it could be deleted"
+            Write-Information "UBW account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
             $outputContext.Success = $false
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "UBW account: [$($actionContext.References.Account.UserId)] could not be found, possibly indicating that it could be deleted"
+                    Message = "UBW account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
                     IsError = $true
                 })
             break
@@ -141,11 +150,11 @@ catch {
         else {
             $message = $errorObj.ErrorDetails
         }
-        $auditMessage = "Could not enable UBW account. Error: $message"        
+        $auditMessage = "Could not grant UBW permission. Error: $message"        
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $message"
     }
     else {
-        $auditMessage = "Could not enable UBW account. Error: $($_.Exception.Message)"
+        $auditMessage = "Could not grant UBW permission. Error: $($_.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
